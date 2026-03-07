@@ -1,0 +1,1 @@
+# samcup-auth-bot

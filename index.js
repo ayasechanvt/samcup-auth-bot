@@ -16,6 +16,7 @@ const PUBLIC_KEY = process.env.DISCORD_PUBLIC_KEY;
 const APP_ID = process.env.DISCORD_APP_ID;
 const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const REGISTER_SECRET = process.env.REGISTER_SECRET;
+const GUILD_ID = process.env.DISCORD_GUILD_ID;
 
 function hexToUint8Array(hex) {
   return new Uint8Array(Buffer.from(hex, "hex"));
@@ -84,8 +85,8 @@ app.post("/interactions", async (req, res) => {
 
 // /verify コマンドをDiscordに登録
 async function registerCommands() {
-  if (!APP_ID || !BOT_TOKEN) {
-    throw new Error("DISCORD_APP_ID または DISCORD_BOT_TOKEN が未設定です");
+  if (!APP_ID || !BOT_TOKEN || !GUILD_ID) {
+    throw new Error("DISCORD_APP_ID / DISCORD_BOT_TOKEN / DISCORD_GUILD_ID のいずれかが未設定です");
   }
 
   const body = [
@@ -96,7 +97,7 @@ async function registerCommands() {
   ];
 
   const response = await fetch(
-    `https://discord.com/api/v10/applications/${APP_ID}/commands`,
+    `https://discord.com/api/v10/applications/${APP_ID}/guilds/${GUILD_ID}/commands`,
     {
       method: "PUT",
       headers: {
@@ -108,10 +109,10 @@ async function registerCommands() {
   );
 
   const text = await response.text();
-  console.log("Command register status:", response.status, text);
+  console.log("Guild command register status:", response.status, text);
 
   if (!response.ok) {
-    throw new Error(`Command register failed: ${response.status} ${text}`);
+    throw new Error(`Guild command register failed: ${response.status} ${text}`);
   }
 }
 

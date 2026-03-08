@@ -15,6 +15,7 @@ const PORT = process.env.PORT || 3000;
 const PUBLIC_KEY = process.env.DISCORD_PUBLIC_KEY;
 const APP_ID = process.env.DISCORD_APP_ID;
 const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
+const REGISTER_SECRET = process.env.REGISTER_SECRET;
 
 function hexToUint8Array(hex) {
   return new Uint8Array(Buffer.from(hex, "hex"));
@@ -37,6 +38,23 @@ function verifyDiscordRequest(req) {
 
 app.get("/", (req, res) => {
   res.status(200).send("SAMCup auth bot is running");
+});
+
+// コマンドを1回だけ手動登録する用
+app.get("/register-commands", async (req, res) => {
+  const secret = req.query.secret;
+
+  if (!REGISTER_SECRET || secret !== REGISTER_SECRET) {
+    return res.status(403).send("forbidden");
+  }
+
+  try {
+    await registerCommands();
+    return res.status(200).send("commands registered");
+  } catch (err) {
+    console.error("registerCommands error:", err);
+    return res.status(500).send("register failed");
+  }
 });
 
 app.post("/interactions", async (req, res) => {
@@ -67,8 +85,7 @@ app.post("/interactions", async (req, res) => {
 // /verify コマンドをDiscordに登録
 async function registerCommands() {
   if (!APP_ID || !BOT_TOKEN) {
-    console.log("DISCORD_APP_ID または DISCORD_BOT_TOKEN が未設定です");
-    return;
+    throw new Error("DISCORD_APP_ID または DISCORD_BOT_TOKEN が未設定です");
   }
 
   const body = [
@@ -83,7 +100,7 @@ async function registerCommands() {
     {
       method: "PUT",
       headers: {
-        "Authorization": `Bot ${BOT_TOKEN}`,
+        Authorization: `Bot ${BOT_TOKEN}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify(body)
@@ -92,9 +109,12 @@ async function registerCommands() {
 
   const text = await response.text();
   console.log("Command register status:", response.status, text);
+
+  if (!response.ok) {
+    throw new Error(`Command register failed: ${response.status} ${text}`);
+  }
 }
 
-app.listen(PORT, async () => {
+app.listen(PORT, () => {
   console.log(`BOT started on port ${PORT}`);
-  await registerCommands();
 });

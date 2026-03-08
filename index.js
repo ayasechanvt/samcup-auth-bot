@@ -94,7 +94,6 @@ async function registerCommands() {
   console.log("Command register status:", response.status, text);
 }
 
-app.listen(PORT, async () => {
+app.listen(PORT, () => {
   console.log(`BOT started on port ${PORT}`);
-  await registerCommands();
 });

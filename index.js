@@ -3,7 +3,6 @@ import nacl from "tweetnacl";
 
 const app = express();
 
-// Discord署名検証のため raw body を保持する
 app.use(
   express.json({
     verify: (req, res, buf) => {
@@ -12,22 +11,15 @@ app.use(
   })
 );
 
-// Renderは PORT 環境変数を使う
 const PORT = process.env.PORT || 3000;
-
-// Developer Portal の「公開キー」
 const PUBLIC_KEY = process.env.DISCORD_PUBLIC_KEY;
+const APP_ID = process.env.DISCORD_APP_ID;
+const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 
-if (!PUBLIC_KEY) {
-  console.error("DISCORD_PUBLIC_KEY が未設定です");
-}
-
-// 16進文字列 → Uint8Array
 function hexToUint8Array(hex) {
   return new Uint8Array(Buffer.from(hex, "hex"));
 }
 
-// Discord署名検証
 function verifyDiscordRequest(req) {
   const signature = req.get("X-Signature-Ed25519");
   const timestamp = req.get("X-Signature-Timestamp");
@@ -36,38 +28,35 @@ function verifyDiscordRequest(req) {
     return false;
   }
 
-  const isValid = nacl.sign.detached.verify(
+  return nacl.sign.detached.verify(
     Buffer.concat([Buffer.from(timestamp), req.rawBody]),
     hexToUint8Array(signature),
     hexToUint8Array(PUBLIC_KEY)
   );
-
-  return isValid;
 }
 
 app.get("/", (req, res) => {
   res.status(200).send("SAMCup auth bot is running");
 });
 
-app.post("/interactions", (req, res) => {
-  // 署名検証
+app.post("/interactions", async (req, res) => {
   if (!verifyDiscordRequest(req)) {
     return res.status(401).send("invalid request signature");
   }
 
   const interaction = req.body;
 
-  // DiscordのPINGにPONGで返す
+  // Discordの疎通確認
   if (interaction.type === 1) {
     return res.json({ type: 1 });
   }
 
-  // いったん簡易テスト
-  if (interaction.type === 2) {
+  // /verify コマンドに反応
+  if (interaction.type === 2 && interaction.data?.name === "verify") {
     return res.json({
       type: 4,
       data: {
-        content: "認証BOT接続テスト成功 👍"
+        content: "認証コマンド受信OK 👍"
       }
     });
   }
@@ -75,6 +64,37 @@ app.post("/interactions", (req, res) => {
   return res.status(200).end();
 });
 
-app.listen(PORT, () => {
+// /verify コマンドをDiscordに登録
+async function registerCommands() {
+  if (!APP_ID || !BOT_TOKEN) {
+    console.log("DISCORD_APP_ID または DISCORD_BOT_TOKEN が未設定です");
+    return;
+  }
+
+  const body = [
+    {
+      name: "verify",
+      description: "SAM Cup参加認証を開始します"
+    }
+  ];
+
+  const response = await fetch(
+    `https://discord.com/api/v10/applications/${APP_ID}/commands`,
+    {
+      method: "PUT",
+      headers: {
+        "Authorization": `Bot ${BOT_TOKEN}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body)
+    }
+  );
+
+  const text = await response.text();
+  console.log("Command register status:", response.status, text);
+}
+
+app.listen(PORT, async () => {
   console.log(`BOT started on port ${PORT}`);
+  await registerCommands();
 });

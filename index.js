@@ -16,7 +16,7 @@ const PUBLIC_KEY = process.env.DISCORD_PUBLIC_KEY;
 const APP_ID = process.env.DISCORD_APP_ID;
 const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const REGISTER_SECRET = process.env.REGISTER_SECRET;
-const GUILD_ID = process.env.DISCORD_GUILD_ID;
+const CHANNEL_ID = process.env.DISCORD_CHANNEL_ID;
 
 function hexToUint8Array(hex) {
   return new Uint8Array(Buffer.from(hex, "hex"));
@@ -41,20 +41,58 @@ app.get("/", (req, res) => {
   res.status(200).send("SAMCup auth bot is running");
 });
 
-// コマンドを1回だけ手動登録する用
-app.get("/register-commands", async (req, res) => {
+// チェックインチャンネルに認証ボタン付きメッセージを送る
+app.get("/post-checkin-button", async (req, res) => {
   const secret = req.query.secret;
 
   if (!REGISTER_SECRET || secret !== REGISTER_SECRET) {
     return res.status(403).send("forbidden");
   }
 
+  if (!CHANNEL_ID || !BOT_TOKEN) {
+    return res.status(500).send("DISCORD_CHANNEL_ID または DISCORD_BOT_TOKEN が未設定です");
+  }
+
   try {
-    await registerCommands();
-    return res.status(200).send("commands registered");
+    const response = await fetch(
+      `https://discord.com/api/v10/channels/${CHANNEL_ID}/messages`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bot ${BOT_TOKEN}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          content:
+            "参加認証が必要な方は、下のボタンを押してください。",
+          components: [
+            {
+              type: 1,
+              components: [
+                {
+                  type: 2,
+                  style: 1,
+                  label: "参加認証",
+                  custom_id: "start_verify"
+                }
+              ]
+            }
+          ]
+        })
+      }
+    );
+
+    const text = await response.text();
+
+    if (!response.ok) {
+      console.error("post-checkin-button failed:", response.status, text);
+      return res.status(500).send(`post failed: ${response.status} ${text}`);
+    }
+
+    return res.status(200).send("checkin button posted");
   } catch (err) {
-    console.error("registerCommands error:", err);
-    return res.status(500).send("register failed");
+    console.error("post-checkin-button error:", err);
+    return res.status(500).send("post failed");
   }
 });
 
@@ -70,51 +108,18 @@ app.post("/interactions", async (req, res) => {
     return res.json({ type: 1 });
   }
 
-  // /verify コマンドに反応
-  if (interaction.type === 2 && interaction.data?.name === "verify") {
+  // ボタン押下時
+  if (interaction.type === 3 && interaction.data?.custom_id === "start_verify") {
     return res.json({
       type: 4,
       data: {
-        content: "認証コマンド受信OK 👍"
+        content: "参加認証ボタンを受け取りました 👍\n次はチーム番号入力に進む予定です。"
       }
     });
   }
 
   return res.status(200).end();
 });
-
-// /verify コマンドをDiscordに登録
-async function registerCommands() {
-  if (!APP_ID || !BOT_TOKEN || !GUILD_ID) {
-    throw new Error("DISCORD_APP_ID / DISCORD_BOT_TOKEN / DISCORD_GUILD_ID のいずれかが未設定です");
-  }
-
-  const body = [
-    {
-      name: "verify",
-      description: "SAM Cup参加認証を開始します"
-    }
-  ];
-
-  const response = await fetch(
-    `https://discord.com/api/v10/applications/${APP_ID}/guilds/${GUILD_ID}/commands`,
-    {
-      method: "PUT",
-      headers: {
-        Authorization: `Bot ${BOT_TOKEN}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(body)
-    }
-  );
-
-  const text = await response.text();
-  console.log("Guild command register status:", response.status, text);
-
-  if (!response.ok) {
-    throw new Error(`Guild command register failed: ${response.status} ${text}`);
-  }
-}
 
 app.listen(PORT, () => {
   console.log(`BOT started on port ${PORT}`);
